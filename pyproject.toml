@@ -7,11 +7,15 @@ authors = [
     { name = "Siavash Outadi", email = "siavash.outadi@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
-
-[project.scripts]
-pishro-lib = "pishro_lib:main"
+dependencies = [
+    "pydantic>=2.11.3",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+development = [
+    "pytest>=8.3.5",
+]

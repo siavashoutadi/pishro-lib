@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from pishro-lib!")
+from pishro_lib import git
+
+__all__ = ["git"]
