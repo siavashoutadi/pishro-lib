@@ -56,7 +56,9 @@ class GitRepository(BaseModel):
             ValueError: If the URL format is invalid.
         """
         if not re.match(r"^https?://.*\.git$|^git@.*:.*.git$", v):
-            raise ValueError("Invalid git repository URL format")
+            raise ValueError(
+                "Invalid git repository URL format. Example of valid url 'https://github.com/org/example.repo"
+            )
         return v
 
     def get_clone_url(self) -> str:

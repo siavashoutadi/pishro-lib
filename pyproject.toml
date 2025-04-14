@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "docker>=7.1.0",
     "pydantic>=2.11.3",
 ]
 
@@ -18,4 +19,5 @@ build-backend = "hatchling.build"
 [dependency-groups]
 development = [
     "pytest>=8.3.5",
+    "types-docker>=7.1.0.20241229",
 ]
