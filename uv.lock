@@ -101,7 +101,7 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-development = [
+dev = [
     { name = "pytest" },
     { name = "types-docker" },
 ]
@@ -113,7 +113,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-development = [
+dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "types-docker", specifier = ">=7.1.0.20241229" },
 ]

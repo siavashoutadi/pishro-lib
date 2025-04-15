@@ -17,7 +17,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-development = [
+dev = [
     "pytest>=8.3.5",
     "types-docker>=7.1.0.20241229",
 ]
