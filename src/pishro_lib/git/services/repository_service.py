@@ -4,11 +4,14 @@ import shutil
 import tempfile
 import docker
 import time
-from datetime import datetime, timedelta
+import git
 
-from pishro_lib.git.models.repository import GitRepository
-from typing import List
+from contextlib import contextmanager
+from typing import List, Generator
+from datetime import datetime, timedelta
 from docker.types import SecretReference
+from pishro_lib.git.models.repository import GitRepository
+
 
 # Secret name prefix for repository configurations
 REPO_SECRET_PREFIX = "pishro_repo_"
@@ -176,3 +179,30 @@ def get_repository(name: str) -> GitRepository:
         shutil.rmtree(temp_dir)
 
     return GitRepository(**secret_data)
+
+
+@contextmanager
+def clone_repository(name: str, branch: str) -> Generator[str, None, None]:
+    """
+    Context manager that clones a repository to a temporary directory and yields the path.
+    The temporary directory is automatically cleaned up after use.
+
+    Args:
+        name: Repository name
+        branch: Branch name to clone
+
+    Yields:
+        str: Path to the temporary directory containing the cloned repository
+    """
+    temp_dir = tempfile.mkdtemp()
+    try:
+        repository = get_repository(name)
+        git_url = repository.url
+
+        if repository.token:
+            git_url = f"https://{repository.token.get_secret_value()}@{git_url.replace('https://', '')}"
+
+        git.Repo.clone_from(git_url, temp_dir, branch=branch)
+        yield temp_dir
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
