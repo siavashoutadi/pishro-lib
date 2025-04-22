@@ -1,10 +1,14 @@
 import shutil
+import yaml
 
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from ..models.package import Package
+from ...utils.jinja_utils import JinjaEnvironment
+from ...utils.file_utils import write_file
+
+from ..models.package import EnvironmentVariable, Package
 from ...git.services.repository_service import clone_repository
-from typing import List
 
 
 def download_package(
@@ -90,3 +94,140 @@ def get_package(repository_name: str, package_name: str) -> Package:
         raise ValueError(
             f"Package '{package_name}' not found in repository '{repository_name}'"
         )
+
+
+def generate_deployment_package(
+    stack_name: str,
+    package_path: Path,
+    destination: Path,
+    override_values_file: Optional[Path],
+    verbose: bool = False,
+) -> None:
+    """
+    Generates a deployment package for a given stack.
+    Args:
+        stack_name (str): The name of the stack.
+        package_path (Path): The path to the package directory.
+        destination (Path): The destination directory for the generated package.
+        override_values_file (Optional[Path]): The path to the override values file.
+        verbose (bool): Whether to print verbose output.
+    """
+    _validate_package_structure(package_path)
+    values, env_vars, secret_vars = _get_values(
+        stack_name=stack_name,
+        package_path=package_path,
+        override_values_file=override_values_file,
+    )
+    values["stack_name"] = stack_name
+
+    template_dir = package_path / "templates"
+
+    jinja_env = JinjaEnvironment(template_dir=template_dir)
+
+    service_name = values.get("service", {}).get("name")
+    if not service_name:
+        raise ValueError(
+            f"Service name not found in values.yaml for stack '{stack_name}'"
+        )
+
+    jinja_env.add_environment_globals(service_name, env_vars)
+    jinja_env.add_secret_globals(service_name, secret_vars)
+
+    for template_file in template_dir.rglob("*"):
+        if template_file.is_file() and not template_file.name.startswith("."):
+            relative_path = template_file.relative_to(template_dir)
+            destination_file = destination / relative_path
+
+            rendered = jinja_env.render_template(
+                template_name=str(relative_path), context=values
+            )
+
+            write_file(destination_file, rendered, verbose=verbose)
+
+
+def _get_values(
+    stack_name: str, package_path: Path, override_values_file: Optional[Path] = None
+) -> tuple[Dict, Dict, Dict]:
+    _validate_package_structure(package_path)
+    _validate_override_values_file(override_values_file)
+
+    values_file = package_path / "values.yaml"
+    values_file_content, default_envs, default_secrets = _parse_values(
+        stack_name=stack_name, values_file=values_file
+    )
+
+    if not override_values_file:
+        return (values_file_content, default_envs, default_secrets)
+
+    override_values_content, override_envs, override_secrets = _parse_values(
+        stack_name=stack_name, values_file=override_values_file
+    )
+
+    values = _deep_merge_values(values_file_content, override_values_content)
+    env_vars = _deep_merge_values(default_envs, override_envs)
+    env_secrets = _deep_merge_values(default_secrets, override_secrets)
+
+    return (values, env_vars, env_secrets)
+
+
+def _parse_values(stack_name: str, values_file: Path) -> tuple[Dict, Dict, Dict]:
+    jinja_env = JinjaEnvironment(template_dir=values_file.parent)
+    file = jinja_env.render_template(
+        template_name=str(values_file.name), context={"stack_name": stack_name}
+    )
+    values_file_content = yaml.safe_load(file) or {}
+    env_values = values_file_content.get("environments", {})
+    values_file_content.pop("environments", None)
+
+    env_vars = {}
+    env_secrets = {}
+    for name, config in env_values.items():
+        env_var = EnvironmentVariable(**config)
+        if env_var.isSecret:
+            env_secrets[name] = EnvironmentVariable(**config)
+        else:
+            env_vars[name] = EnvironmentVariable(**config)
+    return values_file_content, env_vars, env_secrets
+
+
+def _deep_merge_values(default_values: Dict, override_values: Dict) -> Dict:
+    merged = default_values.copy()
+
+    for key, value in override_values.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_values(merged[key], value)
+        else:
+            merged[key] = value
+
+    return merged
+
+
+def _validate_package_structure(package_path: Path) -> None:
+    required_files = [
+        package_path / "package.yaml",
+        package_path / "values.yaml",
+    ]
+
+    for file in required_files:
+        if not file.exists():
+            raise FileNotFoundError(
+                f"Required file '{file}' not found in package directory '{package_path}'."
+            )
+
+    stack_files = [
+        package_path / "templates" / "stack.yaml",
+        package_path / "templates" / "stack.yml",
+    ]
+
+    if not any(file.exists() for file in stack_files):
+        raise FileNotFoundError(
+            f"Neither 'stack.yaml' nor 'stack.yml' found in package directory '{package_path}/templates'."
+        )
+
+
+def _validate_override_values_file(override_values_file: Optional[Path] = None) -> None:
+    if override_values_file:
+        if not override_values_file.exists() or not override_values_file.is_file():
+            raise FileNotFoundError(
+                f"Override values file '{override_values_file}' is invalid or does not exist"
+            )

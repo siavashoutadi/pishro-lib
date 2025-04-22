@@ -3,7 +3,7 @@ import yaml
 
 from pathlib import Path
 from builtins import ValueError, all, isinstance, list, str
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 
 
@@ -151,3 +151,84 @@ class Package(BaseModel):
                 return cls(**data)
             except yaml.YAMLError as e:
                 raise yaml.YAMLError(f"Error parsing YAML file: {e}")
+
+
+class EnvironmentVariable(BaseModel):
+    """
+    A model representing an environment variable.
+
+    Attributes:
+        key (str): The key of the environment variable.
+        value (Optional[str]): The value of the environment variable. Defaults to an empty string.
+        isRequired (bool): Indicates if the environment variable is required. Defaults to True.
+        isSecret (bool): Indicates if the environment variable is a secret. Defaults to False.
+        description (Optional[str]): A brief description of the environment variable. Defaults to an empty string.
+    """
+
+    key: str
+    value: Optional[str] = ""
+    isRequired: bool = True
+    isSecret: bool = False
+    description: Optional[str] = ""
+
+    @field_validator("key")
+    def validate_key(cls, v):
+        """
+        Ensures the key contains only alphanumeric characters, hyphens ("-"), and underscores ("_").
+
+        Args:
+            v (str): The key to validate.
+
+        Returns:
+            str: The validated key.
+
+        Raises:
+            ValueError: If the key contains invalid characters.
+        """
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "Invalid key format. Only alphanumeric characters, '-' and '_' are allowed."
+            )
+        return v
+
+    @field_validator("value")
+    def validate_value(cls, v):
+        """
+        Ensures the value is a string.
+
+        Args:
+            v (str): The value to validate.
+
+        Returns:
+            str: The validated value.
+
+        Raises:
+            ValueError: If the value is not a string.
+        """
+        if v is not None and not isinstance(v, str):
+            raise ValueError("Value must be a string.")
+        return v
+
+    @field_validator("description")
+    def validate_description(cls, v):
+        """
+        Ensures the description is a string.
+
+        Args:
+            v (str): The description to validate.
+
+        Returns:
+            str: The validated description.
+
+        Raises:
+            ValueError: If the description is not a string.
+        """
+        if v is not None and not isinstance(v, str):
+            raise ValueError("Description must be a string.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_required_value(self) -> "EnvironmentVariable":
+        if self.isRequired and not self.value:
+            raise ValueError("value must be set when isRequired is True")
+        return self
