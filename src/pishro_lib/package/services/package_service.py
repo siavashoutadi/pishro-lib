@@ -96,6 +96,36 @@ def get_package(repository_name: str, package_name: str) -> Package:
         )
 
 
+def init_package(package_path: Path, package_name: str) -> None:
+    """
+    Initializes a new package by creating the necessary directory structure
+    and populating it with rendered template files.
+
+    Args:
+        package_path (Path): The path where the package directory will be created.
+        package_name (str): The name of the package to be used in the templates.
+    """
+    package_path.mkdir(parents=True, exist_ok=True)
+
+    template_dir = Path(__file__).parent.parent / "templates" / "package"
+
+    jinja_env = JinjaEnvironment(template_dir=template_dir)
+
+    context = {"package_name": package_name}
+    for template_file in template_dir.rglob("*"):
+        if template_file.is_file() and not template_file.name.startswith("."):
+            relative_path = template_file.relative_to(template_dir)
+            rendered_path = jinja_env.render_string(str(relative_path), context=context)
+            destination_file = package_path / rendered_path
+
+            rendered_content = jinja_env.render_template(
+                template_name=str(relative_path),
+                context=context,
+            )
+
+            write_file(destination_file, rendered_content)
+
+
 def generate_deployment_package(
     stack_name: str,
     package_path: Path,

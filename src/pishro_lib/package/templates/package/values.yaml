@@ -1,0 +1,123 @@
+service:
+  # The name of the service
+  name: {{ package_name }}
+
+image:
+  # The Docker image repository
+  repository: {{ package_name }}
+  # The tag/version of the Docker image
+  tag: 0.1.0
+
+# List of environment variables to be set for the service
+environments:
+  example_environment:
+    key: EXAMPLE_ENVIRONMENT
+    value: "example_value"
+    isRequired: true
+    isSecret: false
+    description: "Example environment variable"
+  example_secret:
+    key: EXAMPLE_SECRET
+    value: "example_secret_value"
+    isRequired: true
+    isSecret: true
+    description: "Example secret environment variable"
+
+# List of ports to be exposed by the service
+ports:
+  - "8080:8080"
+
+# Deploy configuration
+deploy:
+  # Resource configuration
+  resources:
+    # Maximum resources the service can use
+    limits:
+      cpu: "1"
+      memory: "1G"
+    # Minimum resources the service requests
+    requests:
+      cpu: "0.5"
+      memory: "512M"
+  # Replication mode for the service: replicated, global, replicated-job, global-job
+  mode: replicated
+  # Number of replicas for the service
+  replicas: 1
+  # Endpoint resolution mode: vip (virtual IP) or dnsrr (DNS round-robin)
+  endpoint_mode: vip
+
+  # Labels for the service, useful for identification and filtering
+  labels:
+    # Label indicating the service name
+    service: "{{ package_name }}"
+    # Label indicating who deployed the service
+    deployedBy: "pishro"
+
+  # Placement constraints and preferences
+  placement:
+    # Constraints to determine where the service can run
+    constraints:
+      - "node.role==worker"
+    # Preferences for spreading tasks across nodes
+    preferences:
+      - spread: node.id
+
+  # Restart policy for the service
+  restart_policy:
+    # Condition under which the service should restart
+    # Options: none, on-failure, any
+    condition: on-failure
+    # Delay before restarting the service
+    delay: 5s
+    # Maximum number of restart attempts
+    max_attempts: 5
+    # Time window for evaluating restart attempts
+    window: 120s
+
+  # Update configuration for rolling updates
+  update_config:
+    # Number of tasks to update in parallel
+    parallelism: 1
+    # Delay between updates
+    delay: 10s
+    # Action to take on update failure
+    # Options: continue, rollback, pause
+    failure_action: pause
+    # Time to monitor each update
+    monitor: 30s
+    # Maximum failure ratio allowed during updates
+    max_failure_ratio: 0.3
+    # Order of stopping and starting tasks during updates
+    # Options: stop-first, start-first
+    order: start-first
+
+  # Rollback configuration for rolling back updates
+  rollback_config:
+    # Number of tasks to roll back in parallel
+    parallelism: 1
+    # Delay between rollbacks
+    delay: 5s
+    # Action to take on rollback failure
+    # Options: continue, pause
+    failure_action: pause
+    # Time to monitor each rollback
+    monitor: 30s
+    # Maximum failure ratio allowed during rollbacks
+    max_failure_ratio: 0.3
+    # Order of stopping and starting tasks during rollbacks
+    # Options: stop-first, start-first
+    order: start-first
+
+
+config:
+  # Configuration specific to the package
+  {{ package_name }}_conf:
+    # Content of the configuration file
+    content: |
+        example_config=true
+
+networks:
+  - {{ package_name }}
+
+volumes:
+  - {{ package_name }}_data

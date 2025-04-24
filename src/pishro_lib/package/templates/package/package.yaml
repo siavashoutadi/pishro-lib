@@ -1,0 +1,6 @@
+name: {{ package_name }}
+version: 0.1.0
+description: Pishro packaging for {{ package_name }}
+maintainers: []
+tags:
+  - {{ package_name }}
