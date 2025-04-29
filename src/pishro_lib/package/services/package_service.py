@@ -16,6 +16,7 @@ def download_package(
     package_name: str,
     version: str = "",
     destination: str = "./packages/",
+    sub_directory: str = "",
 ) -> None:
     """
     Downloads a pishro package from the pishro repository.
@@ -33,6 +34,8 @@ def download_package(
 
     with clone_repository(repository_name, branch) as repo_path:
         source_dir = Path(repo_path) / package_name
+        if sub_directory:
+            source_dir = Path(repo_path) / sub_directory / package_name
         if not source_dir.exists():
             raise ValueError(
                 f"Package '{package_name}' not found in repository '{repository_name}'"
