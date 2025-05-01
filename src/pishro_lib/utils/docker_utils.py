@@ -1,20 +1,26 @@
 import os
-from pathlib import Path
+
 import tempfile
 import secrets
 import json
 import time
-import docker
 import shutil
 
-
+from pathlib import Path
 from datetime import datetime, timedelta
+
+import docker as dockerclient
+
 from docker.models.secrets import Secret
 from docker.models.services import Service
+from docker.errors import NotFound, APIError
 from docker.types import SecretReference, ServiceMode, Mount
 
+from python_on_whales import DockerClient, Service
 
-docker_client = docker.from_env()
+
+docker_client = dockerclient.from_env()
+docker = DockerClient()
 
 
 class DockerSecretNotFoundError(Exception):
@@ -41,7 +47,7 @@ def get_docker_secret(secret_name: str) -> Secret:
     try:
         secret = docker_client.secrets.get(secret_name)
         return secret
-    except docker.errors.NotFound:
+    except NotFound:
         raise DockerSecretNotFoundError(f"Secret '{secret_name}' not found in Docker.")
 
 
@@ -108,7 +114,7 @@ def create_docker_secret(secret_name: str, secret_value: str) -> None:
             name=secret_name,
             data=secret_value.encode("utf-8"),
         )
-    except docker.errors.APIError as e:
+    except APIError as e:
         raise DockerSecretFailedException(
             f"Failed to create secret '{secret_name}': {e}"
         )
@@ -153,3 +159,50 @@ def create_secret_from_file(secret_name: str, env_file_path: Path) -> str:
 
         create_docker_secret(secret_name, secret_value)
         return secret_value
+
+
+def wait_for_stack_services(stack_name: str, verbose: bool = False):
+    services: list[Service] = docker.stack.services(stack_name)
+    for service in services:
+        _wait_for_service(service_id=service.id, verbose=verbose)
+
+
+def _wait_for_service(
+    service_id, timeout_seconds=300, interval_seconds=5, verbose: bool = False
+):
+    start_time = datetime.now()
+    timeout = start_time + timedelta(seconds=timeout_seconds)
+
+    while datetime.now() < timeout:
+        try:
+            service = docker_client.services.get(service_id)
+            service_detail = service.attrs
+            service_name = service_detail["Spec"]["Name"]
+
+            desired_replicas = int(
+                service_detail["Spec"]["Mode"]["Replicated"]["Replicas"]
+            )
+            tasks = service.tasks({"desired-state": "running"})
+            running_replicas = 0
+            for task in tasks:
+                if task.get("Status", {}).get("State", "").lower() == "running":
+                    running_replicas += 1
+
+            if verbose:
+                print(
+                    f"Service {service_name}: {running_replicas}/{desired_replicas} replicas running ..."
+                )
+
+            if desired_replicas == running_replicas:
+                elapsed_time = (datetime.now() - start_time).total_seconds()
+                if verbose:
+                    print(
+                        f"Service {service_name} is ready! (took {elapsed_time:.1f} seconds)"
+                    )
+                return True
+
+            time.sleep(interval_seconds)
+        except Exception as e:
+            if verbose:
+                print(f"Error checking service status: {e}")
+            return False

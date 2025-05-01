@@ -15,7 +15,7 @@ def download_package(
     repository_name: str,
     package_name: str,
     version: str = "",
-    destination: str = "./packages/",
+    destination: Path | str = "./packages/",
     sub_directory: str = "",
 ) -> None:
     """
@@ -133,8 +133,9 @@ def generate_deployment_package(
     stack_name: str,
     package_path: Path,
     destination: Path,
-    override_values_file: Optional[Path],
+    override_values_file: Optional[Path] | Optional[list[Path]],
     verbose: bool = False,
+    extra_context: Dict = {},
 ) -> None:
     """
     Generates a deployment package for a given stack.
@@ -142,14 +143,16 @@ def generate_deployment_package(
         stack_name (str): The name of the stack.
         package_path (Path): The path to the package directory.
         destination (Path): The destination directory for the generated package.
-        override_values_file (Optional[Path]): The path to the override values file.
+        override_values_file (Optional[Path]) | Optional[list[Path]]: The path to the override values file.
         verbose (bool): Whether to print verbose output.
     """
     _validate_package_structure(package_path)
+
     values, env_vars, secret_vars = _get_values(
         stack_name=stack_name,
         package_path=package_path,
         override_values_file=override_values_file,
+        extra_context=extra_context,
     )
     values["stack_name"] = stack_name
 
@@ -179,34 +182,57 @@ def generate_deployment_package(
 
 
 def _get_values(
-    stack_name: str, package_path: Path, override_values_file: Optional[Path] = None
+    stack_name: str,
+    package_path: Path,
+    override_values_file: Optional[Path] | Optional[list[Path]] = None,
+    extra_context: Dict = {},
 ) -> tuple[Dict, Dict, Dict]:
     _validate_package_structure(package_path)
-    _validate_override_values_file(override_values_file)
+    _validate_override_values_files(override_values_file)
 
     values_file = package_path / "values.yaml"
     values_file_content, default_envs, default_secrets = _parse_values(
-        stack_name=stack_name, values_file=values_file
+        stack_name=stack_name, values_file=values_file, extra_context=extra_context
     )
 
     if not override_values_file:
         return (values_file_content, default_envs, default_secrets)
 
-    override_values_content, override_envs, override_secrets = _parse_values(
-        stack_name=stack_name, values_file=override_values_file
-    )
+    if isinstance(override_values_file, Path):
+        override_values_content, override_envs, override_secrets = _parse_values(
+            stack_name=stack_name,
+            values_file=override_values_file,
+            extra_context=extra_context,
+        )
 
-    values = _deep_merge_values(values_file_content, override_values_content)
-    env_vars = _deep_merge_values(default_envs, override_envs)
-    env_secrets = _deep_merge_values(default_secrets, override_secrets)
+        values = _deep_merge_values(values_file_content, override_values_content)
+        env_vars = _deep_merge_values(default_envs, override_envs)
+        env_secrets = _deep_merge_values(default_secrets, override_secrets)
 
-    return (values, env_vars, env_secrets)
+        return (values, env_vars, env_secrets)
+
+    if isinstance(override_values_file, list):
+        for override_file in sorted(override_values_file):
+            override_values_content, override_envs, override_secrets = _parse_values(
+                stack_name=stack_name,
+                values_file=override_file,
+                extra_context=extra_context,
+            )
+
+            values = _deep_merge_values(values_file_content, override_values_content)
+            env_vars = _deep_merge_values(default_envs, override_envs)
+            env_secrets = _deep_merge_values(default_secrets, override_secrets)
+
+        return (values, env_vars, env_secrets)
 
 
-def _parse_values(stack_name: str, values_file: Path) -> tuple[Dict, Dict, Dict]:
+def _parse_values(
+    stack_name: str, values_file: Path, extra_context: Dict = {}
+) -> tuple[Dict, Dict, Dict]:
+    extra_context.update({"stack_name": stack_name})
     jinja_env = JinjaEnvironment(template_dir=values_file.parent)
     file = jinja_env.render_template(
-        template_name=str(values_file.name), context={"stack_name": stack_name}
+        template_name=str(values_file.name), context=extra_context
     )
     values_file_content = yaml.safe_load(file) or {}
     env_values = values_file_content.get("environments", {})
@@ -258,9 +284,18 @@ def _validate_package_structure(package_path: Path) -> None:
         )
 
 
-def _validate_override_values_file(override_values_file: Optional[Path] = None) -> None:
+def _validate_override_values_files(
+    override_values_file: Optional[Path] | Optional[list[Path]] = None,
+) -> None:
     if override_values_file:
-        if not override_values_file.exists() or not override_values_file.is_file():
-            raise FileNotFoundError(
-                f"Override values file '{override_values_file}' is invalid or does not exist"
-            )
+        if isinstance(override_values_file, Path):
+            if not override_values_file.exists() or not override_values_file.is_file():
+                raise FileNotFoundError(
+                    f"Override values file '{override_values_file}' is invalid or does not exist"
+                )
+        else:
+            for override_file in override_values_file:
+                if not override_file.exists() or not override_file.is_file():
+                    raise FileNotFoundError(
+                        f"Override values file '{override_file}' is invalid or does not exist"
+                    )

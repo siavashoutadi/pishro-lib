@@ -4,7 +4,7 @@ import yaml
 import docker as dockerclient
 from python_on_whales import docker
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 
 from ...package.services.package_service import generate_deployment_package
@@ -14,8 +14,9 @@ def install_from_local(
     stack_name: str,
     packages_dir: Path,
     package_name: str,
-    override_values_file: Optional[Path] = None,
+    override_values_file: Optional[Path] | Optional[list[Path]] = None,
     verbose: bool = False,
+    extra_context: Dict = {},
 ) -> None:
     package_path = packages_dir / package_name
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -26,6 +27,7 @@ def install_from_local(
             destination=destination,
             override_values_file=override_values_file,
             verbose=verbose,
+            extra_context=extra_context,
         )
 
         docker_client = dockerclient.from_env()
